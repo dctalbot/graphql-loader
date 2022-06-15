@@ -1,28 +1,20 @@
 import { print as graphqlPrint } from "graphql/language/printer";
 import { parse as graphqlParse } from "graphql/language/parser";
 import { validate as graphqlValidate } from "graphql/validation/validate";
-import { resolve, join, dirname } from "path";
-import { Stats, writeFile } from "fs";
-import {
-  removeDuplicateFragments,
-  removeSourceLocations,
-  removeUnusedFragments,
-} from "./transforms";
+import { join, dirname } from "path";
+import { Stats } from "fs";
+import { removeDuplicateFragments, removeUnusedFragments } from "./transforms";
 
-import { loader } from "webpack";
+import { LoaderContext } from "webpack";
 import {
   DocumentNode,
   DefinitionNode,
   GraphQLSchema,
   IntrospectionQuery,
   buildClientSchema,
-  graphql,
   Source,
-  OperationDefinitionNode,
+  GraphQLError,
 } from "graphql";
-import pify = require("pify");
-import * as loaderUtils from "loader-utils";
-import codegen from "./codegen";
 
 interface CachedSchema {
   mtime: number;
@@ -31,56 +23,55 @@ interface CachedSchema {
 
 let cachedSchemas: Record<string, CachedSchema> = {};
 
-type OutputTarget = "string" | "document";
-interface LoaderOptions {
+interface GraphQLLoaderOptions {
   schema?: string;
   validate?: boolean;
-  output?: OutputTarget;
   removeUnusedFragments?: boolean;
   minify?: boolean;
   emitDefaultExport?: boolean;
-  codegen?: {
-    typescript: ApolloCodegenTypescriptOptions;
-  };
-}
-
-interface ApolloCodegenTypescriptOptions {
-  passthroughCustomScalars: boolean;
-  customScalarsPrefix: string;
 }
 
 async function readFile(
-  loader: loader.LoaderContext,
-  filePath: string,
+  loader: LoaderContext<GraphQLLoaderOptions>,
+  filePath: string
 ): Promise<string> {
-  const fsReadFile: (path: string) => Promise<Buffer> = pify(
-    loader.fs.readFile.bind(loader.fs),
-  );
-  const content = await fsReadFile(filePath);
-  return content.toString();
+  return new Promise<string>((resolve, reject) => {
+    loader.fs.readFile(filePath, (err, result) => {
+      if (err || result === undefined) {
+        reject(err);
+      } else {
+        resolve(typeof result === "string" ? result : result.toString());
+      }
+    });
+  });
 }
 
 async function stat(
-  loader: loader.LoaderContext,
-  filePath: string,
+  loader: LoaderContext<GraphQLLoaderOptions>,
+  filePath: string
 ): Promise<Stats> {
-  const fsStat: (path: string) => Promise<Stats> = pify(
-    loader.fs.stat.bind(loader.fs),
-  );
-  return fsStat(filePath);
+  return new Promise<Stats>((resolve, reject) => {
+    loader.fs.stat(filePath, (err, result) => {
+      if (err || result === undefined) {
+        reject(err);
+      } else {
+        // IStats is not exported.
+        resolve(result as any as Stats);
+      }
+    });
+  });
 }
 
 async function extractImports(
-  loader: loader.LoaderContext,
+  loader: LoaderContext<GraphQLLoaderOptions>,
   resolveContext: string,
   source: string,
-  document: DocumentNode,
+  document: DocumentNode
 ) {
   const lines = source.split(/(\r\n|\r|\n)/);
-  const loaderResolve = pify(loader.resolve);
 
   const imports: Array<Promise<string>> = [];
-  lines.forEach(line => {
+  lines.forEach((line) => {
     // Find lines that match syntax with `#import "<file>"`
     if (line[0] !== "#") {
       return;
@@ -91,7 +82,7 @@ async function extractImports(
       return;
     }
 
-    const filePathMatch = comment[1] && comment[1].match(/^[\"\'](.+)[\"\']/);
+    const filePathMatch = comment[1] && comment[1].match(/^["'](.+)["']/);
     if (!filePathMatch || !filePathMatch.length) {
       throw new Error("#import statement must specify a quoted file path");
     }
@@ -100,43 +91,45 @@ async function extractImports(
     imports.push(
       new Promise((resolve, reject) => {
         loader.resolve(resolveContext, filePath, (err, result) => {
-          if (err) {
+          if (err || typeof result !== "string") {
             reject(err);
           } else {
             loader.addDependency(result);
             resolve(result);
           }
         });
-      }),
+      })
     );
   });
 
   const files = await Promise.all(imports);
   const contents = await Promise.all(
-    files.map(async filePath => [
+    files.map(async (filePath) => [
       dirname(filePath),
       await readFile(loader, filePath),
-    ]),
+    ])
   );
 
   const nodes = await Promise.all(
     contents.map(([fileContext, content]) =>
-      loadSource(loader, fileContext, content),
-    ),
+      loadSource(loader, fileContext, content)
+    )
   );
   const fragmentDefinitions = nodes.reduce((defs, node) => {
     defs.push(...node.definitions);
     return defs;
   }, [] as DefinitionNode[]);
 
-  document.definitions = [...document.definitions, ...fragmentDefinitions];
-  return document;
+  return {
+    ...document,
+    definitions: [...document.definitions, ...fragmentDefinitions],
+  };
 }
 
 async function loadSource(
-  loader: loader.LoaderContext,
+  loader: LoaderContext<GraphQLLoaderOptions>,
   resolveContext: string,
-  source: string,
+  source: string
 ) {
   let document: DocumentNode = graphqlParse(new Source(source, "GraphQL/file"));
   document = await extractImports(loader, resolveContext, source, document);
@@ -144,17 +137,16 @@ async function loadSource(
 }
 
 async function loadSchema(
-  loader: loader.LoaderContext,
-  options: LoaderOptions,
+  loader: LoaderContext<GraphQLLoaderOptions>,
+  options: GraphQLLoaderOptions
 ): Promise<GraphQLSchema> {
   let schema = null;
 
   if (options.schema) {
-    const loaderResolve = pify(loader.resolve);
     const schemaPath = await findFileInTree(
       loader,
       loader.context,
-      options.schema,
+      options.schema
     );
     loader.addDependency(schemaPath);
 
@@ -189,8 +181,8 @@ async function loadSchema(
   return schema;
 }
 
-async function loadOptions(loader: loader.LoaderContext) {
-  const options: LoaderOptions = { ...loaderUtils.getOptions(loader) };
+async function loadOptions(loader: LoaderContext<GraphQLLoaderOptions>) {
+  const options: GraphQLLoaderOptions = loader.getOptions();
   let schema: GraphQLSchema | undefined = undefined;
   if (options.validate) {
     schema = await loadSchema(loader, options);
@@ -198,13 +190,8 @@ async function loadOptions(loader: loader.LoaderContext) {
 
   return {
     schema,
-    output:
-      !options.output || options.output === "string"
-        ? "string"
-        : "document" as OutputTarget,
     removeUnusedFragments: options.removeUnusedFragments,
     minify: options.minify,
-    codegen: options.codegen,
     emitDefaultExport: options.emitDefaultExport,
   };
 }
@@ -215,9 +202,9 @@ async function loadOptions(loader: loader.LoaderContext) {
  * the file, it will throw an error.
  */
 async function findFileInTree(
-  loader: loader.LoaderContext,
+  loader: LoaderContext<GraphQLLoaderOptions>,
   context: string,
-  schemaPath: string,
+  schemaPath: string
 ) {
   let currentContext = context;
   while (true) {
@@ -231,7 +218,7 @@ async function findFileInTree(
     if (parent === currentContext) {
       // Reached root of the fs, but we still haven't found anything.
       throw new Error(
-        `Could not find schema file '${schemaPath} from any parent of '${context}'`,
+        `Could not find schema file '${schemaPath}' from any parent of '${context}'`
       );
     }
     currentContext = parent;
@@ -239,8 +226,8 @@ async function findFileInTree(
 }
 
 export default async function loader(
-  this: loader.LoaderContext,
-  source: string,
+  this: LoaderContext<GraphQLLoaderOptions>,
+  source: string
 ) {
   this.cacheable();
   const done = this.async();
@@ -248,54 +235,35 @@ export default async function loader(
     throw new Error("Loader does not support synchronous processing");
   }
 
-  let validationErrors: Error[] = [];
+  let validationErrors: readonly GraphQLError[] = [];
+
   try {
     const options = await loadOptions(this);
-    const document = await loadSource(this, this.context, source);
+    let document = await loadSource(this, this.context, source);
 
-    let codegenOutput = null;
-    if (options.codegen && options.codegen.typescript) {
-      if (!options.schema) {
-        throw new Error("schema option must be passed if codegen is specified");
-      }
-
-      codegenOutput = codegen(options.schema, document);
-    }
-
-    removeDuplicateFragments(document);
-    removeSourceLocations(document);
+    document = removeDuplicateFragments(document);
 
     if (options.removeUnusedFragments) {
-      removeUnusedFragments(document);
+      document = removeUnusedFragments(document);
     }
 
     if (options.schema) {
       // Validate
       validationErrors = graphqlValidate(options.schema, document);
       if (validationErrors.length > 0) {
-        validationErrors.forEach(err => this.emitError(err as any));
+        validationErrors.forEach((err) => this.emitError(err as any));
       }
     }
 
-    const content = JSON.stringify(
-      options.output === "document" ? document : graphqlPrint(document),
-    );
-    const output =
-      options.output === "string" && options.minify
-        ? minifyDocumentString(content)
-        : content;
+    const content = JSON.stringify(graphqlPrint(document));
+    const output = options.minify ? minifyDocumentString(content) : content;
 
-    const exp = options.emitDefaultExport ? "export default " : "module.exports = ";
+    const exp = options.emitDefaultExport
+      ? "export default "
+      : "module.exports = ";
 
-    let outputSource = `${exp}${output}`;
-    if (codegenOutput) {
-      outputSource = `const documentOutput = ${output};\n${codegenOutput[0]}\n${exp}spec;`;
-      const writeFileP = pify<string, string, void>(writeFile as any);
-      await writeFileP(`${this.resourcePath}.d.ts`, codegenOutput[1]);
-    }
-
-    done(null, outputSource);
-  } catch (err) {
+    done(null, `${exp}${output}`);
+  } catch (err: any) {
     done(err);
   }
 }
@@ -308,8 +276,8 @@ function minifyDocumentString(documentString: string) {
     .replace(/\s*({|}|\(|\)|\.|:|,)\s*/g, "$1"); // remove whitespace before/after operators
 }
 
-export {
-  removeDuplicateFragments,
-  removeSourceLocations,
-  removeUnusedFragments,
-} from "./transforms";
+// export {
+//   removeDuplicateFragments,
+//   removeSourceLocations,
+//   removeUnusedFragments,
+// } from "./transforms";

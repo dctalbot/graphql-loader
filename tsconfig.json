@@ -6,7 +6,8 @@
     "outDir": "lib/",
     "declaration": true,
     "noEmitOnError": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "module": "commonjs"
   },
   "include": [
     "src/**/*.ts"

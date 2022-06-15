@@ -1,24 +1,30 @@
-import * as webpack from "webpack";
-import * as path from "path";
-import MemoryFileSystem = require("memory-fs");
-import { DocumentNode } from "graphql";
+import * as webpack from 'webpack';
+import { join } from 'path';
+import MemoryFileSystem = require('memory-fs');
+import { StatsError } from 'webpack';
 
-const loaderPath = require.resolve("../src/loader");
+const loaderPath = require.resolve('../src/loader');
 
 export class TestRunError extends Error {
-  constructor(public errors: String[]) {
-    super(`Test Run Compiler Error:\n${errors.map(err => err).join("\n")}`);
+  public errors: string[];
+
+  constructor(errors: StatsError[]) {
+    const errorMessages = errors.map(err => err.message);
+
+    super(`Test Run Compiler Error:\n${errorMessages.join('\n')}`);
 
     Object.setPrototypeOf(this, TestRunError.prototype);
+
+    this.errors = errorMessages;
   }
 }
 
 export function runFixture(fixtureName: string): Promise<{}> {
-  const config = require(path.join(
+  const config = require(join(
     __dirname,
-    "/fixtures/",
+    '/fixtures/',
     fixtureName,
-    "webpack.config.ts",
+    'webpack.config.ts',
   ));
 
   return new Promise((resolve, reject) => {
@@ -28,16 +34,16 @@ export function runFixture(fixtureName: string): Promise<{}> {
       module: {
         rules: [
           {
-            test: /\.(graphql)$/,
+            test: /\.graphql$/,
             exclude: /node_modules/,
             use: [{ loader: loaderPath }],
           },
         ],
       },
       output: {
-        path: "/",
+        path: '/',
         filename: `bundle.js`,
-        libraryTarget: "commonjs2",
+        libraryTarget: 'commonjs2',
       },
       ...config,
     });
@@ -45,16 +51,17 @@ export function runFixture(fixtureName: string): Promise<{}> {
     compiler.outputFileSystem = fs;
 
     compiler.run((err, stats) => {
-      if (err) {
+      if (err || stats === undefined) {
         reject(err);
       } else {
         if (stats.hasErrors()) {
-          reject(new TestRunError(stats.toJson().errors));
+          reject(new TestRunError(stats.toJson().errors || []));
           return;
         }
 
-        const output = fs.readFileSync("/bundle.js").toString() as string;
-        resolve(eval(output));
+        const output = fs.readFileSync('/bundle.js').toString() as string;
+        eval(output);
+        resolve(module.exports);
       }
     });
   });

@@ -11,7 +11,6 @@ describe("graphql-loader", function() {
     "fail-invalid-schema-path",
     "fail-missing-fragment",
     "fail-missing-schema-path",
-    "document-output",
     "filter-unused-fragments",
     "issue-1-import-from-fragment",
     "two-loaders",

@@ -1,5 +1,3 @@
-const loaderPath = require.resolve("../../../src/loader");
-
 module.exports = {
   context: __dirname,
   entry: "./query.graphql",
@@ -10,7 +8,7 @@ module.exports = {
         exclude: /node_modules/,
         use: [
           {
-            loader: loaderPath,
+            loader: require.resolve("../../../src/loader"),
             options: { validate: true },
           },
         ],
