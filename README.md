@@ -1,6 +1,6 @@
 # GraphQL Loader for Webpack
 
-[![npm Version](https://img.shields.io/npm/v/webpack-graphql-loader.svg)](https://www.npmjs.com/package/webpack-graphql-loader)
+[![npm Version](https://img.shields.io/npm/v/jorrit/webpack-graphql-loader)](https://www.npmjs.com/package/@jorrit/webpack-graphql-loader)
 
 A webpack loader for `.graphql` query documents with first class support for **schema validation** and **fragments definitions**.
 
