@@ -8,14 +8,12 @@ const loaderPath = require.resolve('../src/loader');
 export class TestRunError extends Error {
   public errors: string[];
 
-  constructor(errors: StatsError[]) {
-    const errorMessages = errors.map(err => err.message);
-
-    super(`Test Run Compiler Error:\n${errorMessages.join('\n')}`);
+  constructor(errors: string[]) {
+    super(`Test Run Compiler Error:\n${errors.join('\n')}`);
 
     Object.setPrototypeOf(this, TestRunError.prototype);
 
-    this.errors = errorMessages;
+    this.errors = errors;
   }
 }
 
@@ -55,7 +53,15 @@ export function runFixture(fixtureName: string): Promise<{}> {
         reject(err);
       } else {
         if (stats.hasErrors()) {
-          reject(new TestRunError(stats.toJson().errors || []));
+          // Remove context path from error messages.
+          const contextMatcher = new RegExp(config.context.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+          const errorMessages = (stats.toJson().errors || []).map(err => err.message.split("\n")
+              .filter(line => !line.match(/^\s+at/))
+              .map(line => line.replace(contextMatcher, '(path-removed)'))
+              .join("\n"),)
+            ;
+
+          reject(new TestRunError(errorMessages));
           return;
         }
 
