@@ -1,10 +1,14 @@
 {
-  "name": "webpack-graphql-loader",
-  "version": "1.0.2",
+  "name": "@jorrit/webpack-graphql-loader",
+  "version": "1.0.0",
   "description": "webpack graphql loader",
   "main": "./lib/loader.js",
   "types": "./lib/loader.d.ts",
   "author": "Stephen Wan <stephen@stephenwan.com>",
+  "contributors": [{
+    "name" : "Jorrit Schippers",
+    "url" : "https://www.ncode.nl/"
+  }],
   "homepage": "https://github.com/jorrit/graphql-loader/",
   "repository": {
     "type": "git",
