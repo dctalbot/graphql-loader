@@ -1,5 +1,5 @@
 {
-  "name": "@jorrit/webpack-graphql-loader",
+  "name": "@jorritschippers/webpack-graphql-loader",
   "version": "1.0.0",
   "description": "webpack graphql loader",
   "main": "./lib/loader.js",

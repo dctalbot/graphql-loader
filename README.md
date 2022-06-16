@@ -1,6 +1,6 @@
 # GraphQL Loader for Webpack
 
-[![npm Version](https://img.shields.io/npm/v/jorrit/webpack-graphql-loader)](https://www.npmjs.com/package/@jorrit/webpack-graphql-loader)
+[![npm Version](https://img.shields.io/npm/v/jorrit/webpack-graphql-loader)](https://www.npmjs.com/package/@jorritschippers/webpack-graphql-loader)
 
 A webpack loader for `.graphql` query documents with first class support for **schema validation** and **fragments definitions**.
 
@@ -15,7 +15,7 @@ This is a fork of [webpack-graphql-loader](https://www.npmjs.com/package/webpack
 ## Installation
 
 ```bash
-yarn add --dev @jorrit/webpack-graphql-loader # or npm install --save-dev @jorrit/webpack-graphql-loader
+yarn add --dev @jorritschippers/webpack-graphql-loader # or npm install --save-dev @jorritschippers/webpack-graphql-loader
 ```
 
 You will also need to install a copy of [`graphql`](https://www.npmjs.com/package/graphql), which is a peer dependency of this package.
@@ -26,13 +26,13 @@ yarn add --dev graphql # or npm install --save-dev graphql
 
 ## Configuration
 
-Add `@jorrit/webpack-graphql-loader` to your webpack configuration:
+Add `@jorritschippers/webpack-graphql-loader` to your webpack configuration:
 ```javascript
 module.exports = {
   // ...
   module: {
     rules: [ // or "loaders" for webpack 1.x
-      { test: /\.graphql?$/, loader: '@jorrit/webpack-graphql-loader' }
+      { test: /\.graphql?$/, loader: '@jorritschippers/webpack-graphql-loader' }
     ]
   }
 }
